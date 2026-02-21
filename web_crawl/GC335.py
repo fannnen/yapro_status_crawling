@@ -22,16 +22,30 @@ QUERY_ENDPOINT_SUFFIX = "/APGQ/GC335!query"
 class GC335Client:
     """
     Keep ONE Chrome session open and query many plates.
+    Runs headless (background) without popping Chrome window.
     Robust against BlockUI overlay click intercept + slow responses.
     """
 
-    def __init__(self, headless: bool = False, timeout: int = 40):
+    def __init__(self, headless: bool = True, timeout: int = 40):
         self.timeout = timeout
 
         options = webdriver.ChromeOptions()
+
+        # Needed for CDP network logs
         options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+
+        # ---------- BACKGROUND / HEADLESS ----------
         if headless:
-            options.add_argument("--headless=new")
+            options.add_argument("--headless=new")  # modern headless
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+
+        # Hide "controlled by automated test software" banner + reduce detection
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option("useAutomationExtension", False)
+        options.add_argument("--disable-blink-features=AutomationControlled")
 
         self.driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install()),
@@ -131,9 +145,8 @@ class GC335Client:
             self.plate_input.clear()
             self.plate_input.send_keys(plate)
 
-        # Click 查詢 safely (fixes ElementClickInterceptedException)
+        # Click 查詢 safely
         search_btn = (By.ID, "searchButton")
-        # fallback locator if ID ever changes
         search_btn_fallback = (By.XPATH, "//button[contains(.,'查詢')] | //input[@value='查詢']")
 
         try:
@@ -141,14 +154,13 @@ class GC335Client:
         except Exception:
             self._safe_click(search_btn_fallback, timeout=30)
 
-        # After clicking, wait until overlay finishes again (query in progress)
+        # After clicking, wait until overlay finishes again
         try:
             self._wait_blockui_gone(timeout=30)
         except Exception:
-            # not fatal; continue
             pass
 
-        # Find matching requestId by waiting for responseReceived (more reliable than requestWillBeSent only)
+        # Find matching requestId
         request_id = None
         deadline = time.time() + 30
 
@@ -168,7 +180,6 @@ class GC335Client:
                 method = msg.get("method")
                 params = msg.get("params", {})
 
-                # Prefer responseReceived: means response exists
                 if method == "Network.responseReceived":
                     resp = params.get("response", {})
                     url = resp.get("url", "")
@@ -176,20 +187,19 @@ class GC335Client:
                         request_id = params.get("requestId")
                         break
 
-                # Fallback: requestWillBeSent
                 if method == "Network.requestWillBeSent":
                     req = params.get("request", {})
                     url = req.get("url", "")
                     if url.endswith(QUERY_ENDPOINT_SUFFIX):
                         request_id = params.get("requestId")
-                        # don't break immediately; responseReceived is better, but keep it as fallback
+
             if request_id is None:
                 time.sleep(0.1)
 
         if not request_id:
             return {"ok": False, "error": "could not find GC335!query requestId", "plate": plate}
 
-        # Fetch response body (retry a bit; sometimes body isn't ready immediately)
+        # Fetch response body (retry a bit)
         body = None
         for _ in range(200):  # up to ~20s
             try:
@@ -213,7 +223,7 @@ class GC335Client:
 
     def query_plate_first_row(self, plate: str) -> Dict[str, Any]:
         """
-        Returns gridModel[0] (your usable row dict) or an ok=False dict.
+        Returns gridModel[0] or an ok=False dict.
         """
         data = self.query_plate_raw(plate)
         if not data.get("ok"):

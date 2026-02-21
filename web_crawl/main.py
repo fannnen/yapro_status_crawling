@@ -133,13 +133,13 @@ def main():
 
     vehicle_type = get_vehicle_type()
     if vehicle_type == "335":
-        client = GC335Client(headless=False)
+        client = GC335Client(headless=True)
         keys_order = [
             "receiveDate", "dealNote", "taxreFund", "custCd",
             "caseNo", "msg", "dealDate", "rptDate"
         ]
     else:
-        client = GC337Client(headless=False)
+        client = GC337Client(headless=True)
         keys_order = ["transId", "crtDate", "status", "refundDt"]
 
     try:
