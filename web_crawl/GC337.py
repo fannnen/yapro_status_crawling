@@ -2,6 +2,8 @@ import json
 import time
 from typing import Optional, Dict, Any
 from datetime import datetime
+import os
+import sys
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -14,12 +16,24 @@ from selenium.common.exceptions import (
     StaleElementReferenceException,
     TimeoutException,
 )
-from webdriver_manager.chrome import ChromeDriverManager
-
 
 URL = "http://portal.sw.nat.gov.tw/APGQ/LoginFree?request_locale=zh_TW&breadCrumbs=JTdCJTIyYnJlYWRDcnVtYnMlMjIlM0ElNUIlN0IlMjJuYW1lJTIyJTNBJTIyJUU1JTg1JThEJUU4JUFEJTg5JUU2JTlGJUE1JUU4JUE5JUEyJUU2JTlDJThEJUU1JThCJTk5JTIyJTJDJTIydXJsJTIyJTNBJTIyJTIyJTdEJTJDJTdCJTIybmFtZSUyMiUzQSUyMiVFNSU4NSVCNiVFNCVCQiU5NiVFNyU5QiVCOCVFOSU5NyU5QyVFNiU5RiVBNSVFOCVBOSVBMiUyMiUyQyUyMnVybCUyMiUzQSUyMmNoYW5nZU1lbnVVcmwyKCclRTUlODUlQjYlRTQlQkIlOTYlRTclOUIlQjglRTklOTclOUMlRTYlOUYlQTUlRTglQTklQTInJTJDJ0FQR1FfNicpJTIyJTdEJTJDJTdCJTIybmFtZSUyMiUzQSUyMihHQzMzNyklRTklODAlODAlRTklODIlODQlRTklODAlQjIlRTUlOEYlQTMlRTklOUIlQkIlRTUlOEIlOTUlRTglQkIlOEElRTglQkMlOUIlRTglQjIlQTglRTclODklQTklRTclQTglODUlRTclOTQlQjMlRTglQUIlOEIlRTYlQTElODglRTQlQkIlQjYlRTklODAlQjIlRTUlQkElQTYlRTYlOUYlQTUlRTglQTklQTIlMjIlMkMlMjJ1cmwlMjIlM0ElMjJvcGVuTWVudSgnJTJGQVBHUSUyRkdDMzM3JyklMjIlN0QlMkMlN0IlN0QlMkMlN0IlN0QlNUQlMkMlMjJwYXRoVXJsJTIyJTNBJTIyJTIzTUVOVV9BUEdRJTJDJTIzTUVOVV9BUEdRXzYlMkMlMkZBUEdRJTJGR0MzMzclMjIlN0Q="
 
 QUERY_ENDPOINT_SUFFIX = "/APGQ/GC337!query"
+
+def get_chromedriver_path() -> str:
+        if getattr(sys, "frozen", False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        driver_path = os.path.join(base_dir, "chromedriver.exe")
+        if not os.path.exists(driver_path):
+            raise FileNotFoundError(
+                f"chromedriver.exe not found at:\n{driver_path}\n"
+                "Put chromedriver.exe next to the app."
+            )
+        return driver_path
 
 
 class GC337Client:
@@ -30,7 +44,7 @@ class GC337Client:
             options.add_argument("--headless=new")
 
         self.driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
+            service=Service(get_chromedriver_path()),
             options=options,
         )
         self.wait = WebDriverWait(self.driver, timeout)
