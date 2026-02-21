@@ -2,8 +2,8 @@
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 import os
+from typing import List, Optional
 
-import excel_read
 from GC335 import GC335Client
 from GC337 import GC337Client
 
@@ -20,71 +20,35 @@ def safe_save_workbook(wb, filename):
         print(f"Saved to: {out_name}")
 
 
-def prompt_excel_file() -> tuple:
-    while True:
-        filename = input("Enter the Excel file name (with .xlsx): ").strip().strip('"').strip("'")
+# ----------------------------
+# NEW: GUI-friendly helpers
+# ----------------------------
+def read_column_values(excel_path: str, sheet_name: str, col_letter: str, start_row: int = 2) -> List[str]:
+    """
+    Read values from a column (A-Z...) in a given sheet.
+    Returns a list of strings (plates), skipping blanks.
+    """
+    wb = load_workbook(excel_path)
+    if sheet_name not in wb.sheetnames:
+        raise ValueError(f"Sheet '{sheet_name}' not found. Available: {wb.sheetnames}")
 
-        if not filename:
-            print("File name cannot be empty.\n")
+    ws = wb[sheet_name]
+    col_letter = col_letter.strip().upper()
+
+    values = []
+    for cell in ws[col_letter][start_row - 1 :]:  # openpyxl is 0-indexed for slicing
+        if cell.value is None:
             continue
-        if not filename.lower().endswith(".xlsx"):
-            print("Please enter a .xlsx file.\n")
-            continue
-        if not os.path.exists(filename):
-            print("File not found. Check the name/path and try again.\n")
-            continue
-
-        try:
-            wb = load_workbook(filename)
-            return wb, filename
-        except InvalidFileException:
-            print("Invalid Excel file. Make sure it is a real .xlsx file.\n")
-        except PermissionError:
-            print("Permission denied. Close the file in Excel and try again.\n")
-        except Exception as e:
-            print(f"Could not open file: {e}\n")
-
-
-def select_sheet(workbook):
-    print("\nAvailable sheets:")
-    for name in workbook.sheetnames:
-        print(f"- {name}")
-
-    while True:
-        sheet_name = input("\nEnter the sheet name to write data into: ").strip()
-        if not sheet_name:
-            print("Sheet name cannot be empty.")
-            continue
-        if sheet_name in workbook.sheetnames:
-            return workbook[sheet_name]
-        print("Sheet not found. Please choose from the list above.")
-
-
-def get_vehicle_type():
-    while True:
-        user_choice = input("What type of car would you like to search (electric / gasoline)? ")
-        if not user_choice:
-            print("Please enter something.")
-            continue
-
-        choice = user_choice.strip().lower()
-        if choice in ("electric", "e"):
-            return "337"
-        elif choice in ("gasoline", "g", "gas", "petrol"):
-            return "335"
-        else:
-            print("Invalid input. Please enter 'electric' (e) or 'gasoline' (g).")
+        s = str(cell.value).strip()
+        if s:
+            values.append(s)
+    return values
 
 
 # ----------------------------
-# NEW: robust sheet helpers
+# Your existing robust helpers
 # ----------------------------
-
 def find_row_by_value(ws, value, start_row=2):
-    """
-    Find a row that contains the exact plate value anywhere in the sheet (from start_row).
-    Returns row index if found, else None.
-    """
     target = str(value).strip()
     for row in ws.iter_rows(min_row=start_row):
         for cell in row:
@@ -96,12 +60,7 @@ def find_row_by_value(ws, value, start_row=2):
 
 
 def first_empty_row_any(ws, start_row=2):
-    """
-    Returns the first row that is completely empty (across columns 1..ws.max_column).
-    If the sheet is narrow/empty, this still works and will append cleanly.
-    """
     r = start_row
-    # Ensure we check at least a few columns even when ws.max_column is 1
     check_cols = max(ws.max_column, 10)
     while True:
         any_value = False
@@ -115,66 +74,78 @@ def first_empty_row_any(ws, start_row=2):
 
 
 def first_empty_col_in_row(ws, row, start_col=1):
-    """
-    Find the first empty column in a specific row, scanning from start_col.
-    If no empty column exists within current max_column, returns max_column + 1.
-    """
     for c in range(start_col, ws.max_column + 1):
         if ws.cell(row=row, column=c).value in (None, ""):
             return c
     return ws.max_column + 1
 
 
-def main():
-    data = excel_read.read_data()
+# ----------------------------
+# ✅ STEP 2: callable entrypoint for your GUI
+# ----------------------------
+def run_job(
+    excel_path: str,
+    sheet_name: str,
+    plate_col: str,
+    vehicle_type: str,           # "335" or "337"
+    headless: bool = True,
+    output_path: Optional[str] = None,  # if None -> overwrite same file (safe_save_workbook handles locked file)
+):
+    """
+    GUI calls this.
+    - Reads plates from (excel_path, sheet_name, plate_col)
+    - Queries GC335/GC337
+    - Writes results into the SAME sheet, into the next empty columns on each plate's row
+    - Saves to output_path if provided, otherwise saves back to excel_path
+    """
+    excel_path = excel_path.strip().strip('"').strip("'")
+    if not excel_path.lower().endswith(".xlsx"):
+        raise ValueError("Please select a .xlsx file")
+    if not os.path.exists(excel_path):
+        raise FileNotFoundError(f"File not found: {excel_path}")
 
-    wb, filename = prompt_excel_file()
-    ws = select_sheet(wb)
+    wb = load_workbook(excel_path)
+    if sheet_name not in wb.sheetnames:
+        raise ValueError(f"Sheet '{sheet_name}' not found. Available: {wb.sheetnames}")
+    ws = wb[sheet_name]
 
-    vehicle_type = get_vehicle_type()
+    # Read plate list from the selected column
+    plates = read_column_values(excel_path, sheet_name, plate_col, start_row=2)
+
+    vehicle_type = str(vehicle_type).strip()
     if vehicle_type == "335":
-        client = GC335Client(headless=False)
-        keys_order = [
-            "receiveDate", "dealNote", "taxreFund", "custCd",
-            "caseNo", "msg", "dealDate", "rptDate"
-        ]
-    else:
-        client = GC337Client(headless=False)
+        client = GC335Client(headless=headless)
+        keys_order = ["receiveDate", "dealNote", "taxreFund", "custCd", "caseNo", "msg", "dealDate", "rptDate"]
+    elif vehicle_type == "337":
+        client = GC337Client(headless=headless)
         keys_order = ["transId", "crtDate", "status", "refundDt"]
+    else:
+        raise ValueError("vehicle_type must be '335' or '337'")
 
     try:
-        for item in data:
-            if item is None or str(item).strip() == "":
-                continue
-
-            plate = str(item).strip()
-
-            # ✅ Row = the row that already contains this plate (any column)
+        for plate in plates:
+            # find existing row that already has this plate anywhere
             row = find_row_by_value(ws, plate, start_row=2)
 
-            # ✅ If plate not found anywhere, append a new empty row
+            # if not found, append new empty row and write plate in col A
             if row is None:
                 row = first_empty_row_any(ws, start_row=2)
-                # Put plate somewhere predictable so it can be found next run
                 ws.cell(row=row, column=1, value=plate)
 
             json_data = client.query_plate_first_row(plate)
             print(f"\nResult for {plate}: {json_data}")
 
             no_result = (
-                (not isinstance(json_data, dict)) or
-                (not json_data) or
-                (json_data.get("ok") is False)
+                (not isinstance(json_data, dict))
+                or (not json_data)
+                or (json_data.get("ok") is False)
             )
 
-            # ✅ Start writing at the next empty column in THIS row
             start_col = first_empty_col_in_row(ws, row, start_col=1)
 
             if no_result:
                 ws.cell(row=row, column=start_col, value="無結果")
-                reason = ""
-                if isinstance(json_data, dict):
-                    reason = json_data.get("error", "")
+                reason = json_data.get("error", "") if isinstance(json_data, dict) else ""
                 ws.cell(row=row, column=start_col + 1, value=reason)
                 continue
 
@@ -182,9 +153,44 @@ def main():
                 ws.cell(row=row, column=start_col + i, value=json_data.get(key, ""))
 
     finally:
-        client.close()
+        try:
+            client.close()
+        except Exception:
+            pass
 
-    safe_save_workbook(wb, filename)
+    # Save
+    if output_path:
+        safe_save_workbook(wb, output_path)
+    else:
+        safe_save_workbook(wb, excel_path)
+
+
+# ----------------------------
+# CLI mode still works (optional)
+# ----------------------------
+def main():
+    # Keep your old interactive workflow if you still want it.
+    excel_path = input("Enter the Excel file name (with .xlsx): ").strip().strip('"').strip("'")
+
+    wb = load_workbook(excel_path)
+    print("\nAvailable sheets:")
+    for name in wb.sheetnames:
+        print(f"- {name}")
+    sheet_name = input("\nEnter the sheet name to write data into: ").strip()
+
+    plate_col = input("Enter the plate column letter (A-Z): ").strip().upper()
+
+    vehicle = input("Type (electric / gasoline): ").strip().lower()
+    vehicle_type = "337" if vehicle in ("electric", "e") else "335"
+
+    run_job(
+        excel_path=excel_path,
+        sheet_name=sheet_name,
+        plate_col=plate_col,
+        vehicle_type=vehicle_type,
+        headless=True,
+        output_path=None,
+    )
 
 
 if __name__ == "__main__":

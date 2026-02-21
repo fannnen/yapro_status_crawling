@@ -36,3 +36,23 @@ def read_data():
         else:
             print("Please enter a valid column letter (A-ZZ).")
 
+def read_data_from(file_path: str, sheet_name: str, col_ref: str):
+    """
+    Non-interactive: read values from a specific sheet+column.
+    Returns a list of non-empty cell values from row 2 onward.
+    """
+    wb = load_workbook(file_path)
+    if sheet_name not in wb.sheetnames:
+        raise ValueError(f"Sheet '{sheet_name}' not found. Available: {wb.sheetnames}")
+
+    ws = wb[sheet_name]
+    col_ref = col_ref.strip().upper()
+
+    values = []
+    for cell in ws[col_ref][1:]:
+        if cell.value is None:
+            continue
+        s = str(cell.value).strip()
+        if s:
+            values.append(cell.value)
+    return values
