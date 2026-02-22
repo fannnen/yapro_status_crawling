@@ -4,7 +4,9 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from openpyxl import load_workbook
 
-import main  # imports your main.py (must be in same folder)
+import main
+
+APP_VERSION = "1.0.1"
 
 
 def list_sheets(xlsx_path: str):
@@ -16,7 +18,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("YaPro GC335/GC337 Tool")
-        self.geometry("820x520")
+        self.geometry("820x540")
 
         self.plates_file = tk.StringVar()
         self.output_file = tk.StringVar()
@@ -33,47 +35,100 @@ class App(tk.Tk):
         frm = ttk.Frame(self)
         frm.pack(fill="both", expand=True, **pad)
 
-        # Plates file
-        ttk.Label(frm, text="Plates Excel (read plates from):").grid(row=0, column=0, sticky="w", **pad)
-        ttk.Entry(frm, textvariable=self.plates_file, width=70).grid(row=0, column=1, sticky="we", **pad)
-        ttk.Button(frm, text="Browse...", command=self.pick_plates_file).grid(row=0, column=2, **pad)
+        # ========================
+        # Row 0 — Caution box
+        # ========================
+        caution_frame = ttk.LabelFrame(frm, text="⚠ Important Notice")
+        caution_frame.grid(row=0, column=0, columnspan=4, sticky="we", padx=8, pady=6)
 
-        ttk.Label(frm, text="Plates sheet:").grid(row=1, column=0, sticky="w", **pad)
+        caution_text = (
+            "• Please CLOSE the Excel file before running.\n"
+            "• Make sure Chrome is installed.\n"
+            "• Chrome version must match chromedriver version.\n"
+            "• Please MAKE A COPY of the initial file before running.\n"
+            "• Large plate lists may take time (up to an hour).\n"
+            "• Please make sure your file has a header row."
+        )
+
+        ttk.Label(
+            caution_frame,
+            text=caution_text,
+            foreground="red",
+            justify="left"
+        ).pack(anchor="w", padx=8, pady=4)
+
+        # ========================
+        # Row 1 — Plates file
+        # ========================
+        ttk.Label(frm, text="Plates Excel (read plates from):").grid(row=1, column=0, sticky="w", **pad)
+        ttk.Entry(frm, textvariable=self.plates_file, width=70).grid(row=1, column=1, sticky="we", **pad)
+        ttk.Button(frm, text="Browse...", command=self.pick_plates_file).grid(row=1, column=2, **pad)
+
+        # ========================
+        # Row 2 — Plates sheet + column
+        # ========================
+        ttk.Label(frm, text="Plates sheet:").grid(row=2, column=0, sticky="w", **pad)
         self.cbo_plates_sheet = ttk.Combobox(frm, textvariable=self.plates_sheet, state="readonly", width=30)
-        self.cbo_plates_sheet.grid(row=1, column=1, sticky="w", **pad)
+        self.cbo_plates_sheet.grid(row=2, column=1, sticky="w", **pad)
 
-        ttk.Label(frm, text="Plates column (A/B/C...):").grid(row=1, column=2, sticky="e", **pad)
-        ttk.Entry(frm, textvariable=self.plates_col, width=8).grid(row=1, column=3, sticky="w", **pad)
+        ttk.Label(frm, text="Plates column (A/B/C...):").grid(row=2, column=2, sticky="e", **pad)
+        ttk.Entry(frm, textvariable=self.plates_col, width=8).grid(row=2, column=3, sticky="w", **pad)
 
-        # Output file
-        ttk.Label(frm, text="Output Excel (write results into):").grid(row=2, column=0, sticky="w", **pad)
-        ttk.Entry(frm, textvariable=self.output_file, width=70).grid(row=2, column=1, sticky="we", **pad)
-        ttk.Button(frm, text="Browse...", command=self.pick_output_file).grid(row=2, column=2, **pad)
+        # ========================
+        # Row 3 — Output file
+        # ========================
+        ttk.Label(frm, text="Output Excel (write results into):").grid(row=3, column=0, sticky="w", **pad)
+        ttk.Entry(frm, textvariable=self.output_file, width=70).grid(row=3, column=1, sticky="we", **pad)
+        ttk.Button(frm, text="Browse...", command=self.pick_output_file).grid(row=3, column=2, **pad)
 
-        ttk.Label(frm, text="Output sheet:").grid(row=3, column=0, sticky="w", **pad)
+        # ========================
+        # Row 4 — Output sheet
+        # ========================
+        ttk.Label(frm, text="Output sheet:").grid(row=4, column=0, sticky="w", **pad)
         self.cbo_output_sheet = ttk.Combobox(frm, textvariable=self.output_sheet, state="readonly", width=30)
-        self.cbo_output_sheet.grid(row=3, column=1, sticky="w", **pad)
+        self.cbo_output_sheet.grid(row=4, column=1, sticky="w", **pad)
 
-        # Vehicle type
+        # ========================
+        # Row 5 — Vehicle type
+        # ========================
         box = ttk.LabelFrame(frm, text="Vehicle Type / Endpoint")
-        box.grid(row=4, column=0, columnspan=4, sticky="we", **pad)
+        box.grid(row=5, column=0, columnspan=4, sticky="we", **pad)
 
-        ttk.Radiobutton(box, text="Gasoline (GC335)", variable=self.vehicle_type, value="335").pack(side="left", padx=10, pady=6)
-        ttk.Radiobutton(box, text="Electric (GC337)", variable=self.vehicle_type, value="337").pack(side="left", padx=10, pady=6)
+        ttk.Radiobutton(
+            box, text="Gasoline (GC335)", variable=self.vehicle_type, value="335"
+        ).pack(side="left", padx=10, pady=6)
 
-        # Run button
+        ttk.Radiobutton(
+            box, text="Electric (GC337)", variable=self.vehicle_type, value="337"
+        ).pack(side="left", padx=10, pady=6)
+
+        # ========================
+        # Row 6 — Run button + status
+        # ========================
         self.btn_run = ttk.Button(frm, text="Run", command=self.on_run)
-        self.btn_run.grid(row=5, column=0, sticky="w", **pad)
+        self.btn_run.grid(row=6, column=0, sticky="w", **pad)
 
         self.lbl_status = ttk.Label(frm, text="Ready.")
-        self.lbl_status.grid(row=5, column=1, columnspan=3, sticky="w", **pad)
+        self.lbl_status.grid(row=6, column=1, columnspan=3, sticky="w", **pad)
 
-        # Log box
-        self.txt = tk.Text(frm, height=18)
-        self.txt.grid(row=6, column=0, columnspan=4, sticky="nsew", **pad)
+        # ========================
+        # Row 7 — Log box
+        # ========================
+        self.txt = tk.Text(frm, height=16)
+        self.txt.grid(row=7, column=0, columnspan=4, sticky="nsew", **pad)
+
+        # ========================
+        # Row 8 — Version (bottom right)
+        # ========================
+        self.lbl_version = ttk.Label(
+            frm,
+            text=f"Version {APP_VERSION}",
+            foreground="gray"
+        )
+        self.lbl_version.grid(row=8, column=3, sticky="e", padx=8, pady=4)
 
         frm.columnconfigure(1, weight=1)
-        frm.rowconfigure(6, weight=1)
+        frm.rowconfigure(7, weight=1)
 
     def log(self, s: str):
         self.txt.insert("end", s + "\n")
@@ -106,7 +161,6 @@ class App(tk.Tk):
             messagebox.showerror("Error", f"Failed to read sheets:\n{e}")
 
     def on_run(self):
-        # quick validation
         if not self.plates_file.get().strip():
             messagebox.showwarning("Missing", "Please choose Plates Excel.")
             return
@@ -132,19 +186,24 @@ class App(tk.Tk):
 
     def _run_worker(self):
         try:
-            # main.run_job prints results; we’ll just show some progress here
-            self.log(f"Plates: {self.plates_file.get()} | sheet={self.plates_sheet.get()} | col={self.plates_col.get()}")
-            self.log(f"Output: {self.output_file.get()} | sheet={self.output_sheet.get()}")
-            self.log(f"Mode: {self.vehicle_type.get()}")
+            self.log(
+                f"Plates: {self.plates_file.get()} | sheet={self.plates_sheet.get()} | col={self.plates_col.get()}"
+            )
+            self.log(
+                f"Output: {self.output_file.get()} | sheet={self.output_sheet.get()}"
+            )
+            self.log(
+                f"Mode: {self.vehicle_type.get()}"
+            )
 
             main.run_job(
-    excel_path=self.plates_file.get(),
-    sheet_name=self.plates_sheet.get(),
-    plate_col=self.plates_col.get(),
-    vehicle_type=self.vehicle_type.get(),
-    headless=True,
-    output_path=self.output_file.get(),
-)
+                excel_path=self.plates_file.get(),
+                sheet_name=self.plates_sheet.get(),
+                plate_col=self.plates_col.get(),
+                vehicle_type=self.vehicle_type.get(),
+                headless=True,
+                output_path=self.output_file.get(),
+            )
 
             self.log("=== DONE (saved) ===")
             self._ui_done("Done.")
