@@ -1,3 +1,5 @@
+import os
+import sys
 import threading
 import traceback
 import tkinter as tk
@@ -6,7 +8,27 @@ from openpyxl import load_workbook
 
 import main
 
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
+
+
+def resource_path(filename: str) -> str:
+    """
+    Return absolute path to resource, works for:
+    - normal python run
+    - PyInstaller --onedir (resources next to exe)
+    - PyInstaller --onefile (resources extracted to _MEIPASS)
+    """
+    # onefile
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        base_dir = sys._MEIPASS
+    # onedir
+    elif getattr(sys, "frozen", False):
+        base_dir = os.path.dirname(sys.executable)
+    # dev
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    return os.path.join(base_dir, filename)
 
 
 def list_sheets(xlsx_path: str):
@@ -27,6 +49,9 @@ class App(tk.Tk):
         self.plates_col = tk.StringVar(value="A")
         self.vehicle_type = tk.StringVar(value="335")
 
+        # keep a reference so the image doesn't get garbage-collected
+        self.notice_img = None
+
         self._build_ui()
 
     def _build_ui(self):
@@ -41,6 +66,11 @@ class App(tk.Tk):
         caution_frame = ttk.LabelFrame(frm, text="⚠ Important Notice")
         caution_frame.grid(row=0, column=0, columnspan=4, sticky="we", padx=8, pady=6)
 
+        # inner layout: text left, image right
+        caution_inner = ttk.Frame(caution_frame)
+        caution_inner.grid(row=0, column=0, sticky="we", padx=8, pady=6)
+        caution_inner.columnconfigure(0, weight=1)  # text expands
+
         caution_text = (
             "• Please CLOSE the Excel file before running.\n"
             "• Make sure Chrome is installed.\n"
@@ -51,11 +81,22 @@ class App(tk.Tk):
         )
 
         ttk.Label(
-            caution_frame,
+            caution_inner,
             text=caution_text,
             foreground="red",
             justify="left"
-        ).pack(anchor="w", padx=8, pady=4)
+        ).grid(row=0, column=0, sticky="w")
+
+        # load and show PNG on the right (safe path for PyInstaller)
+        try:
+            logo_path = resource_path("yapro_logo.png")
+            self.notice_img = tk.PhotoImage(file=logo_path)
+            ttk.Label(caution_inner, image=self.notice_img).grid(row=0, column=1, sticky="e", padx=(12, 0))
+        except Exception:
+            # If image missing, just skip it (no crash)
+            pass
+
+        caution_frame.columnconfigure(0, weight=1)
 
         # ========================
         # Row 1 — Plates file
@@ -94,13 +135,8 @@ class App(tk.Tk):
         box = ttk.LabelFrame(frm, text="Vehicle Type / Endpoint")
         box.grid(row=5, column=0, columnspan=4, sticky="we", **pad)
 
-        ttk.Radiobutton(
-            box, text="Gasoline (GC335)", variable=self.vehicle_type, value="335"
-        ).pack(side="left", padx=10, pady=6)
-
-        ttk.Radiobutton(
-            box, text="Electric (GC337)", variable=self.vehicle_type, value="337"
-        ).pack(side="left", padx=10, pady=6)
+        ttk.Radiobutton(box, text="Gasoline (GC335)", variable=self.vehicle_type, value="335").pack(side="left", padx=10, pady=6)
+        ttk.Radiobutton(box, text="Electric (GC337)", variable=self.vehicle_type, value="337").pack(side="left", padx=10, pady=6)
 
         # ========================
         # Row 6 — Run button + status
@@ -120,11 +156,7 @@ class App(tk.Tk):
         # ========================
         # Row 8 — Version (bottom right)
         # ========================
-        self.lbl_version = ttk.Label(
-            frm,
-            text=f"Version {APP_VERSION}",
-            foreground="gray"
-        )
+        self.lbl_version = ttk.Label(frm, text=f"Version {APP_VERSION}", foreground="gray")
         self.lbl_version.grid(row=8, column=3, sticky="e", padx=8, pady=4)
 
         frm.columnconfigure(1, weight=1)
@@ -186,15 +218,9 @@ class App(tk.Tk):
 
     def _run_worker(self):
         try:
-            self.log(
-                f"Plates: {self.plates_file.get()} | sheet={self.plates_sheet.get()} | col={self.plates_col.get()}"
-            )
-            self.log(
-                f"Output: {self.output_file.get()} | sheet={self.output_sheet.get()}"
-            )
-            self.log(
-                f"Mode: {self.vehicle_type.get()}"
-            )
+            self.log(f"Plates: {self.plates_file.get()} | sheet={self.plates_sheet.get()} | col={self.plates_col.get()}")
+            self.log(f"Output: {self.output_file.get()} | sheet={self.output_sheet.get()}")
+            self.log(f"Mode: {self.vehicle_type.get()}")
 
             main.run_job(
                 excel_path=self.plates_file.get(),
