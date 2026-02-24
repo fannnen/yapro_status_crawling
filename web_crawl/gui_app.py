@@ -1,3 +1,4 @@
+# gui_app.py
 import os
 import sys
 import threading
@@ -8,7 +9,7 @@ from openpyxl import load_workbook
 
 import main
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 
 
 def resource_path(filename: str) -> str:
@@ -48,6 +49,10 @@ class App(tk.Tk):
         self.output_sheet = tk.StringVar()
         self.plates_col = tk.StringVar(value="A")
         self.vehicle_type = tk.StringVar(value="335")
+
+        # Progress UI vars (NEW)
+        self.progress_var = tk.DoubleVar(value=0)
+        self.progress_text = tk.StringVar(value="0 / 0")
 
         # keep a reference so the image doesn't get garbage-collected
         self.notice_img = None
@@ -139,13 +144,25 @@ class App(tk.Tk):
         ttk.Radiobutton(box, text="Electric (GC337)", variable=self.vehicle_type, value="337").pack(side="left", padx=10, pady=6)
 
         # ========================
-        # Row 6 — Run button + status
+        # Row 6 — Run + Status + Progress (UPDATED)
         # ========================
         self.btn_run = ttk.Button(frm, text="Run", command=self.on_run)
         self.btn_run.grid(row=6, column=0, sticky="w", **pad)
 
         self.lbl_status = ttk.Label(frm, text="Ready.")
-        self.lbl_status.grid(row=6, column=1, columnspan=3, sticky="w", **pad)
+        self.lbl_status.grid(row=6, column=1, sticky="w", **pad)
+
+        self.pbar = ttk.Progressbar(
+            frm,
+            orient="horizontal",
+            mode="determinate",
+            variable=self.progress_var,
+            maximum=100,
+        )
+        self.pbar.grid(row=6, column=2, sticky="we", **pad)
+
+        self.lbl_progress = ttk.Label(frm, textvariable=self.progress_text, width=12, anchor="e")
+        self.lbl_progress.grid(row=6, column=3, sticky="e", **pad)
 
         # ========================
         # Row 7 — Log box
@@ -160,6 +177,7 @@ class App(tk.Tk):
         self.lbl_version.grid(row=8, column=3, sticky="e", padx=8, pady=4)
 
         frm.columnconfigure(1, weight=1)
+        frm.columnconfigure(2, weight=1)  # let progressbar stretch
         frm.rowconfigure(7, weight=1)
 
     def log(self, s: str):
@@ -209,6 +227,10 @@ class App(tk.Tk):
             messagebox.showwarning("Missing", "Please enter Plates column.")
             return
 
+        # reset progress (NEW)
+        self.progress_var.set(0)
+        self.progress_text.set("0 / 0")
+
         self.btn_run.config(state="disabled")
         self.lbl_status.config(text="Running...")
         self.log("=== START ===")
@@ -222,6 +244,27 @@ class App(tk.Tk):
             self.log(f"Output: {self.output_file.get()} | sheet={self.output_sheet.get()}")
             self.log(f"Mode: {self.vehicle_type.get()}")
 
+            def progress_cb(current: int, total: int, plate: str):
+                def _ui():
+                    if total <= 0:
+                        self.progress_var.set(0)
+                        self.progress_text.set("0 / 0")
+                        return
+
+                    # current might be 0 once at start
+                    if current <= 0:
+                        self.progress_var.set(0)
+                        self.progress_text.set(f"0 / {total}")
+                        return
+
+                    pct = (current / total) * 100.0
+                    self.progress_var.set(pct)
+                    self.progress_text.set(f"{current} / {total}")
+                    if plate:
+                        self.lbl_status.config(text=f"Running... ({plate})")
+
+                self.after(0, _ui)
+
             main.run_job(
                 excel_path=self.plates_file.get(),
                 sheet_name=self.plates_sheet.get(),
@@ -229,6 +272,7 @@ class App(tk.Tk):
                 vehicle_type=self.vehicle_type.get(),
                 headless=True,
                 output_path=self.output_file.get(),
+                progress_cb=progress_cb,  # <-- NEW
             )
 
             self.log("=== DONE (saved) ===")

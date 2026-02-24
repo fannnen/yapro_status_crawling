@@ -2,7 +2,7 @@
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 import os
-from typing import List, Optional
+from typing import List, Optional, Callable
 
 from GC335 import GC335Client
 from GC337 import GC337Client
@@ -90,6 +90,7 @@ def run_job(
     vehicle_type: str,           # "335" or "337"
     headless: bool = True,
     output_path: Optional[str] = None,  # if None -> overwrite same file (safe_save_workbook handles locked file)
+    progress_cb: Optional[Callable[[int, int, str], None]] = None,  # <-- NEW
 ):
     """
     GUI calls this.
@@ -97,6 +98,9 @@ def run_job(
     - Queries GC335/GC337
     - Writes results into the SAME sheet, into the next empty columns on each plate's row
     - Saves to output_path if provided, otherwise saves back to excel_path
+
+    progress_cb(current, total, plate)
+      - current starts at 1
     """
     excel_path = excel_path.strip().strip('"').strip("'")
     if not excel_path.lower().endswith(".xlsx"):
@@ -111,6 +115,11 @@ def run_job(
 
     # Read plate list from the selected column
     plates = read_column_values(excel_path, sheet_name, plate_col, start_row=2)
+    total = len(plates)
+
+    # If no plates, still report progress as 0/0 and just save/exit
+    if progress_cb:
+        progress_cb(0, total, "")
 
     vehicle_type = str(vehicle_type).strip()
     if vehicle_type == "335":
@@ -123,7 +132,10 @@ def run_job(
         raise ValueError("vehicle_type must be '335' or '337'")
 
     try:
-        for plate in plates:
+        for idx, plate in enumerate(plates, start=1):
+            if progress_cb:
+                progress_cb(idx, total, plate)
+
             # find existing row that already has this plate anywhere
             row = find_row_by_value(ws, plate, start_row=2)
 
@@ -190,6 +202,7 @@ def main():
         vehicle_type=vehicle_type,
         headless=True,
         output_path=None,
+        progress_cb=None,
     )
 
 
