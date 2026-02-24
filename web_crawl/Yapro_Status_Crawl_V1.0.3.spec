@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('yapro_logo.png', '.')]
+datas = []
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('selenium')
@@ -30,7 +30,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Yapro_Status_Crawl_v1.0.2',
+    name='Yapro_Status_Crawl_V1.0.3',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -49,5 +49,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='Yapro_Status_Crawl_v1.0.2',
+    name='Yapro_Status_Crawl_V1.0.3',
 )
