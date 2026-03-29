@@ -9,7 +9,7 @@ from openpyxl import load_workbook
 
 import main
 
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.1.0"
 
 
 def resource_path(filename: str) -> str:
@@ -40,7 +40,7 @@ def list_sheets(xlsx_path: str):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("YaPro GC335/GC337 Tool")
+        self.title("Yapro GC335/GC337 Tool")
         self.geometry("820x540")
 
         self.plates_file = tk.StringVar()
@@ -77,12 +77,10 @@ class App(tk.Tk):
         caution_inner.columnconfigure(0, weight=1)  # text expands
 
         caution_text = (
-            "• Please CLOSE the Excel file before running.\n"
-            "• Make sure Chrome is installed.\n"
-            "• Chrome version must match chromedriver version.\n"
-            "• Please MAKE A COPY of the initial file before running.\n"
-            "• Large plate lists may take time (up to an hour).\n"
-            "• Please make sure your file has a header row."
+            "• 執行前確保選取檔案已關閉\n"
+            "• 執行前確保檔案已備份.\n"
+            "• 執行前請先閱讀操作說明.\n"
+            "• 若須查詢大量車牌，請允許一個小時以上的執行時間."
         )
 
         ttk.Label(
@@ -106,47 +104,47 @@ class App(tk.Tk):
         # ========================
         # Row 1 — Plates file
         # ========================
-        ttk.Label(frm, text="Plates Excel (read plates from):").grid(row=1, column=0, sticky="w", **pad)
+        ttk.Label(frm, text="檔案:").grid(row=1, column=0, sticky="w", **pad)
         ttk.Entry(frm, textvariable=self.plates_file, width=70).grid(row=1, column=1, sticky="we", **pad)
-        ttk.Button(frm, text="Browse...", command=self.pick_plates_file).grid(row=1, column=2, **pad)
+        ttk.Button(frm, text="選取檔案...", command=self.pick_plates_file).grid(row=1, column=2, **pad)
 
         # ========================
         # Row 2 — Plates sheet + column
         # ========================
-        ttk.Label(frm, text="Plates sheet:").grid(row=2, column=0, sticky="w", **pad)
+        ttk.Label(frm, text="工作表:").grid(row=2, column=0, sticky="w", **pad)
         self.cbo_plates_sheet = ttk.Combobox(frm, textvariable=self.plates_sheet, state="readonly", width=30)
         self.cbo_plates_sheet.grid(row=2, column=1, sticky="w", **pad)
 
-        ttk.Label(frm, text="Plates column (A/B/C...):").grid(row=2, column=2, sticky="e", **pad)
+        ttk.Label(frm, text="車牌欄目(A/B/C...):").grid(row=2, column=2, sticky="e", **pad)
         ttk.Entry(frm, textvariable=self.plates_col, width=8).grid(row=2, column=3, sticky="w", **pad)
 
         # ========================
         # Row 3 — Output file
         # ========================
-        ttk.Label(frm, text="Output Excel (write results into):").grid(row=3, column=0, sticky="w", **pad)
+        ttk.Label(frm, text="輸出至:").grid(row=3, column=0, sticky="w", **pad)
         ttk.Entry(frm, textvariable=self.output_file, width=70).grid(row=3, column=1, sticky="we", **pad)
-        ttk.Button(frm, text="Browse...", command=self.pick_output_file).grid(row=3, column=2, **pad)
+        ttk.Button(frm, text="選取檔案...", command=self.pick_output_file).grid(row=3, column=2, **pad)
 
         # ========================
         # Row 4 — Output sheet
         # ========================
-        ttk.Label(frm, text="Output sheet:").grid(row=4, column=0, sticky="w", **pad)
+        ttk.Label(frm, text="輸出工作表:").grid(row=4, column=0, sticky="w", **pad)
         self.cbo_output_sheet = ttk.Combobox(frm, textvariable=self.output_sheet, state="readonly", width=30)
         self.cbo_output_sheet.grid(row=4, column=1, sticky="w", **pad)
 
         # ========================
         # Row 5 — Vehicle type
         # ========================
-        box = ttk.LabelFrame(frm, text="Vehicle Type / Endpoint")
+        box = ttk.LabelFrame(frm, text="車輛型式")
         box.grid(row=5, column=0, columnspan=4, sticky="we", **pad)
 
-        ttk.Radiobutton(box, text="Gasoline (GC335)", variable=self.vehicle_type, value="335").pack(side="left", padx=10, pady=6)
-        ttk.Radiobutton(box, text="Electric (GC337)", variable=self.vehicle_type, value="337").pack(side="left", padx=10, pady=6)
+        ttk.Radiobutton(box, text="汽油", variable=self.vehicle_type, value="335").pack(side="left", padx=10, pady=6)
+        ttk.Radiobutton(box, text="電動", variable=self.vehicle_type, value="337").pack(side="left", padx=10, pady=6)
 
         # ========================
         # Row 6 — Run + Status + Progress (UPDATED)
         # ========================
-        self.btn_run = ttk.Button(frm, text="Run", command=self.on_run)
+        self.btn_run = ttk.Button(frm, text="執行", command=self.on_run)
         self.btn_run.grid(row=6, column=0, sticky="w", **pad)
 
         self.lbl_status = ttk.Label(frm, text="Ready.")
@@ -232,7 +230,7 @@ class App(tk.Tk):
         self.progress_text.set("0 / 0")
 
         self.btn_run.config(state="disabled")
-        self.lbl_status.config(text="Running...")
+        self.lbl_status.config(text="執行中...")
         self.log("=== START ===")
 
         t = threading.Thread(target=self._run_worker, daemon=True)

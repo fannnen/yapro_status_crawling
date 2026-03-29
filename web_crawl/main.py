@@ -2,6 +2,7 @@
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 import os
+import shutil
 from typing import List, Optional, Callable
 
 from GC335 import GC335Client
@@ -20,6 +21,28 @@ def safe_save_workbook(wb, filename):
         print(f"Saved to: {out_name}")
 
 
+def create_backup_copy(file_path: str) -> str:
+    """
+    Create a backup copy of the target Excel file in the same directory.
+    Example:
+        report.xlsx -> report_copy.xlsx
+
+    If report_copy.xlsx already exists, it creates:
+        report_copy1.xlsx, report_copy2.xlsx, ...
+    """
+    base, ext = os.path.splitext(file_path)
+    copy_path = f"{base}_copy{ext}"
+
+    counter = 1
+    while os.path.exists(copy_path):
+        copy_path = f"{base}_copy{counter}{ext}"
+        counter += 1
+
+    shutil.copy2(file_path, copy_path)
+    print(f"Backup created: {copy_path}")
+    return copy_path
+
+
 # ----------------------------
 # NEW: GUI-friendly helpers
 # ----------------------------
@@ -36,7 +59,7 @@ def read_column_values(excel_path: str, sheet_name: str, col_letter: str, start_
     col_letter = col_letter.strip().upper()
 
     values = []
-    for cell in ws[col_letter][start_row - 1 :]:  # openpyxl is 0-indexed for slicing
+    for cell in ws[col_letter][start_row - 1:]:
         if cell.value is None:
             continue
         s = str(cell.value).strip()
@@ -81,7 +104,7 @@ def first_empty_col_in_row(ws, row, start_col=1):
 
 
 # ----------------------------
-# ✅ STEP 2: callable entrypoint for your GUI
+# callable entrypoint for your GUI
 # ----------------------------
 def run_job(
     excel_path: str,
@@ -89,8 +112,8 @@ def run_job(
     plate_col: str,
     vehicle_type: str,           # "335" or "337"
     headless: bool = True,
-    output_path: Optional[str] = None,  # if None -> overwrite same file (safe_save_workbook handles locked file)
-    progress_cb: Optional[Callable[[int, int, str], None]] = None,  # <-- NEW
+    output_path: Optional[str] = None,  # if None -> overwrite same file
+    progress_cb: Optional[Callable[[int, int, str], None]] = None,
 ):
     """
     GUI calls this.
@@ -98,6 +121,10 @@ def run_job(
     - Queries GC335/GC337
     - Writes results into the SAME sheet, into the next empty columns on each plate's row
     - Saves to output_path if provided, otherwise saves back to excel_path
+
+    Backup behavior:
+    - If output_path is provided, backup the output file before writing to it
+    - If output_path is not provided, backup excel_path before writing to it
 
     progress_cb(current, total, plate)
       - current starts at 1
@@ -108,6 +135,19 @@ def run_job(
     if not os.path.exists(excel_path):
         raise FileNotFoundError(f"File not found: {excel_path}")
 
+    if output_path:
+        output_path = output_path.strip().strip('"').strip("'")
+        if not output_path.lower().endswith(".xlsx"):
+            raise ValueError("Output file must be a .xlsx file")
+        if not os.path.exists(output_path):
+            raise FileNotFoundError(f"Output file not found: {output_path}")
+        target_file_to_backup = output_path
+    else:
+        target_file_to_backup = excel_path
+
+    # Create backup before any modification happens
+    create_backup_copy(target_file_to_backup)
+
     wb = load_workbook(excel_path)
     if sheet_name not in wb.sheetnames:
         raise ValueError(f"Sheet '{sheet_name}' not found. Available: {wb.sheetnames}")
@@ -117,7 +157,6 @@ def run_job(
     plates = read_column_values(excel_path, sheet_name, plate_col, start_row=2)
     total = len(plates)
 
-    # If no plates, still report progress as 0/0 and just save/exit
     if progress_cb:
         progress_cb(0, total, "")
 
@@ -178,10 +217,9 @@ def run_job(
 
 
 # ----------------------------
-# CLI mode still works (optional)
+# CLI mode still works
 # ----------------------------
 def main():
-    # Keep your old interactive workflow if you still want it.
     excel_path = input("Enter the Excel file name (with .xlsx): ").strip().strip('"').strip("'")
 
     wb = load_workbook(excel_path)
