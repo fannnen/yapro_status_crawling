@@ -1,4 +1,3 @@
-# main.py
 from openpyxl import load_workbook
 import os
 import shutil
@@ -6,6 +5,9 @@ from typing import List, Optional, Callable
 
 from GC335 import GC335Client
 from GC337 import GC337Client
+
+
+PLATE_COL = "D"
 
 
 def safe_save_workbook(wb, filename):
@@ -34,18 +36,19 @@ def create_backup_copy(file_path: str) -> str:
     return copy_path
 
 
-def read_column_values(excel_path: str, sheet_name: str, col_letter: str, start_row: int = 2) -> List[str]:
+def read_column_values(excel_path: str, sheet_name: str, start_row: int = 2) -> List[str]:
     wb = load_workbook(excel_path)
+
     if sheet_name not in wb.sheetnames:
         raise ValueError(f"Sheet '{sheet_name}' not found. Available: {wb.sheetnames}")
 
     ws = wb[sheet_name]
-    col_letter = col_letter.strip().upper()
 
     values = []
-    for cell in ws[col_letter][start_row - 1:]:
+    for cell in ws[PLATE_COL][start_row - 1:]:
         if cell.value is None:
             continue
+
         s = str(cell.value).strip()
         if s:
             values.append(s)
@@ -53,18 +56,17 @@ def read_column_values(excel_path: str, sheet_name: str, col_letter: str, start_
     return values
 
 
-def detect_vehicle_type(ws, plate_col: str) -> str:
+def detect_vehicle_type(ws) -> str:
     """
-    Detect vehicle type from row 2 of selected plate column.
+    Detect vehicle type from D2.
 
     E / RE = electric = GC337
     Others = gasoline = GC335
     """
-    plate_col = plate_col.strip().upper()
-    first_plate = ws[f"{plate_col}2"].value
+    first_plate = ws[f"{PLATE_COL}2"].value
 
     if first_plate is None or str(first_plate).strip() == "":
-        raise ValueError(f"No license plate found at {plate_col}2.")
+        raise ValueError(f"No license plate found at {PLATE_COL}2.")
 
     plate = str(first_plate).strip().upper()
 
@@ -76,12 +78,15 @@ def detect_vehicle_type(ws, plate_col: str) -> str:
 
 def find_row_by_value(ws, value, start_row=2):
     target = str(value).strip()
+
     for row in ws.iter_rows(min_row=start_row):
         for cell in row:
             if cell.value is None:
                 continue
+
             if str(cell.value).strip() == target:
                 return cell.row
+
     return None
 
 
@@ -91,6 +96,7 @@ def first_empty_row_any(ws, start_row=2):
 
     while True:
         any_value = False
+
         for c in range(1, check_cols + 1):
             if ws.cell(row=r, column=c).value not in (None, ""):
                 any_value = True
@@ -113,7 +119,6 @@ def first_empty_col_in_row(ws, row, start_col=1):
 def run_job(
     excel_path: str,
     sheet_name: str,
-    plate_col: str,
     headless: bool = True,
     output_path: Optional[str] = None,
     progress_cb: Optional[Callable[[int, int, str], None]] = None,
@@ -147,18 +152,17 @@ def run_job(
         raise ValueError(f"Sheet '{sheet_name}' not found. Available: {wb.sheetnames}")
 
     ws = wb[sheet_name]
-    plate_col = plate_col.strip().upper()
 
-    plates = read_column_values(excel_path, sheet_name, plate_col, start_row=2)
+    plates = read_column_values(excel_path, sheet_name, start_row=2)
     total = len(plates)
 
     if total == 0:
-        raise ValueError("No license plates found.")
+        raise ValueError(f"No license plates found in column {PLATE_COL}.")
 
     if progress_cb:
         progress_cb(0, total, "")
 
-    vehicle_type = detect_vehicle_type(ws, plate_col)
+    vehicle_type = detect_vehicle_type(ws)
     print(f"Detected vehicle type: {vehicle_type}")
 
     if vehicle_type == "337":
@@ -186,7 +190,7 @@ def run_job(
 
             if row is None:
                 row = first_empty_row_any(ws, start_row=2)
-                ws.cell(row=row, column=1, value=plate)
+                ws.cell(row=row, column=4, value=plate)
 
             json_data = client.query_plate_first_row(plate)
             print(f"\nResult for {plate}: {json_data}")
@@ -230,12 +234,10 @@ def main():
         print(f"- {name}")
 
     sheet_name = input("\nEnter the sheet name to write data into: ").strip()
-    plate_col = input("Enter the plate column letter (A-Z): ").strip().upper()
 
     run_job(
         excel_path=excel_path,
         sheet_name=sheet_name,
-        plate_col=plate_col,
         headless=True,
         output_path=None,
         progress_cb=None,
