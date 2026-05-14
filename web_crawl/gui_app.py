@@ -38,7 +38,6 @@ class App(tk.Tk):
         self.output_file = tk.StringVar()
         self.plates_sheet = tk.StringVar()
         self.output_sheet = tk.StringVar()
-        self.plates_col = tk.StringVar(value="A")
 
         self.progress_var = tk.DoubleVar(value=0)
         self.progress_text = tk.StringVar(value="0 / 0")
@@ -53,7 +52,6 @@ class App(tk.Tk):
         frm = ttk.Frame(self)
         frm.pack(fill="both", expand=True, **pad)
 
-        # Row 0 — Caution box
         caution_frame = ttk.LabelFrame(frm, text="⚠ Important Notice")
         caution_frame.grid(row=0, column=0, columnspan=4, sticky="we", padx=8, pady=6)
 
@@ -65,6 +63,7 @@ class App(tk.Tk):
             "• 執行前確保選取檔案已關閉\n"
             "• 執行前確保檔案已備份.\n"
             "• 執行前請先閱讀操作說明.\n"
+            "• 請確定車牌欄位在Column D.\n"
             "• 若須查詢大量車牌，請允許一個小時以上的執行時間."
         )
 
@@ -86,37 +85,22 @@ class App(tk.Tk):
 
         caution_frame.columnconfigure(0, weight=1)
 
-        # Row 1 — File
         ttk.Label(frm, text="檔案:").grid(row=1, column=0, sticky="w", **pad)
         ttk.Entry(frm, textvariable=self.plates_file, width=70).grid(row=1, column=1, sticky="we", **pad)
         ttk.Button(frm, text="選取檔案...", command=self.pick_plates_file).grid(row=1, column=2, **pad)
 
-        # Row 2 — Sheet + column
         ttk.Label(frm, text="工作表:").grid(row=2, column=0, sticky="w", **pad)
         self.cbo_plates_sheet = ttk.Combobox(frm, textvariable=self.plates_sheet, state="readonly", width=30)
         self.cbo_plates_sheet.grid(row=2, column=1, sticky="w", **pad)
 
-        ttk.Label(frm, text="車牌欄目(A/B/C...):").grid(row=2, column=2, sticky="e", **pad)
-        ttk.Entry(frm, textvariable=self.plates_col, width=8).grid(row=2, column=3, sticky="w", **pad)
-
-        # Row 3 — Output file
         ttk.Label(frm, text="輸出至:").grid(row=3, column=0, sticky="w", **pad)
         ttk.Entry(frm, textvariable=self.output_file, width=70).grid(row=3, column=1, sticky="we", **pad)
         ttk.Button(frm, text="選取檔案...", command=self.pick_output_file).grid(row=3, column=2, **pad)
 
-        # Row 4 — Output sheet
         ttk.Label(frm, text="輸出工作表:").grid(row=4, column=0, sticky="w", **pad)
         self.cbo_output_sheet = ttk.Combobox(frm, textvariable=self.output_sheet, state="readonly", width=30)
         self.cbo_output_sheet.grid(row=4, column=1, sticky="w", **pad)
 
-        # Row 5 — Auto detect note
-        ttk.Label(
-            frm,
-            text="車輛型式: 自動判斷（車牌 E / RE = 電動 GC337，其餘 = 汽油 GC335）",
-            foreground="gray"
-        ).grid(row=5, column=0, columnspan=4, sticky="w", **pad)
-
-        # Row 6 — Run + Status + Progress
         self.btn_run = ttk.Button(frm, text="執行", command=self.on_run)
         self.btn_run.grid(row=6, column=0, sticky="w", **pad)
 
@@ -135,11 +119,9 @@ class App(tk.Tk):
         self.lbl_progress = ttk.Label(frm, textvariable=self.progress_text, width=12, anchor="e")
         self.lbl_progress.grid(row=6, column=3, sticky="e", **pad)
 
-        # Row 7 — Log box
         self.txt = tk.Text(frm, height=16)
         self.txt.grid(row=7, column=0, columnspan=4, sticky="nsew", **pad)
 
-        # Row 8 — Version
         self.lbl_version = ttk.Label(frm, text=f"Version {APP_VERSION}", foreground="gray")
         self.lbl_version.grid(row=8, column=3, sticky="e", padx=8, pady=4)
 
@@ -198,10 +180,6 @@ class App(tk.Tk):
             messagebox.showwarning("Missing", "Please choose Output sheet.")
             return
 
-        if not self.plates_col.get().strip():
-            messagebox.showwarning("Missing", "Please enter Plates column.")
-            return
-
         self.progress_var.set(0)
         self.progress_text.set("0 / 0")
 
@@ -217,7 +195,7 @@ class App(tk.Tk):
             self.log(
                 f"Plates: {self.plates_file.get()} | "
                 f"sheet={self.plates_sheet.get()} | "
-                f"col={self.plates_col.get()}"
+                f"col=D"
             )
             self.log(f"Output: {self.output_file.get()} | sheet={self.output_sheet.get()}")
             self.log("Mode: Auto detect from first plate")
@@ -246,7 +224,6 @@ class App(tk.Tk):
             main.run_job(
                 excel_path=self.plates_file.get(),
                 sheet_name=self.plates_sheet.get(),
-                plate_col=self.plates_col.get(),
                 headless=True,
                 output_path=self.output_file.get(),
                 progress_cb=progress_cb,

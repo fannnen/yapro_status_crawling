@@ -11,6 +11,9 @@ from GC335 import GC335Client
 from GC337 import GC337Client
 
 
+PLATE_COL = "D"
+
+
 def safe_save_workbook(wb, filename):
     try:
         wb.save(filename)
@@ -76,7 +79,7 @@ def read_column_values(
     return values
 
 
-def detect_vehicle_type(ws, plate_col: str) -> str:
+def detect_vehicle_type(ws) -> str:
     """
     Detect vehicle type from first plate.
 
@@ -89,7 +92,7 @@ def detect_vehicle_type(ws, plate_col: str) -> str:
     first_plate = ws[f"{plate_col}2"].value
 
     if first_plate is None or str(first_plate).strip() == "":
-        raise ValueError(f"No license plate found at {plate_col}2.")
+        raise ValueError(f"No license plate found at {PLATE_COL}2.")
 
     plate = str(first_plate).strip().upper()
 
@@ -151,7 +154,6 @@ def first_empty_col_in_row(ws, row, start_col=1):
 def run_job(
     excel_path: str,
     sheet_name: str,
-    plate_col: str,
     headless: bool = True,
     output_path: Optional[str] = None,
     progress_cb: Optional[Callable[[int, int, str], None]] = None,
@@ -203,7 +205,7 @@ def run_job(
     total = len(plates)
 
     if total == 0:
-        raise ValueError("No license plates found.")
+        raise ValueError(f"No license plates found in column {PLATE_COL}.")
 
     if progress_cb:
         progress_cb(0, total, "")
