@@ -1,6 +1,5 @@
 # main.py
 from openpyxl import load_workbook
-from openpyxl.utils.exceptions import InvalidFileException
 import os
 import shutil
 from typing import List, Optional, Callable
@@ -22,14 +21,6 @@ def safe_save_workbook(wb, filename):
 
 
 def create_backup_copy(file_path: str) -> str:
-    """
-    Create a backup copy of the target Excel file in the same directory.
-    Example:
-        report.xlsx -> report_copy.xlsx
-
-    If report_copy.xlsx already exists, it creates:
-        report_copy1.xlsx, report_copy2.xlsx, ...
-    """
     base, ext = os.path.splitext(file_path)
     copy_path = f"{base}_copy{ext}"
 
@@ -43,14 +34,7 @@ def create_backup_copy(file_path: str) -> str:
     return copy_path
 
 
-# ----------------------------
-# NEW: GUI-friendly helpers
-# ----------------------------
 def read_column_values(excel_path: str, sheet_name: str, col_letter: str, start_row: int = 2) -> List[str]:
-    """
-    Read values from a column (A-Z...) in a given sheet.
-    Returns a list of strings (plates), skipping blanks.
-    """
     wb = load_workbook(excel_path)
     if sheet_name not in wb.sheetnames:
         raise ValueError(f"Sheet '{sheet_name}' not found. Available: {wb.sheetnames}")
@@ -65,12 +49,31 @@ def read_column_values(excel_path: str, sheet_name: str, col_letter: str, start_
         s = str(cell.value).strip()
         if s:
             values.append(s)
+
     return values
 
 
-# ----------------------------
-# Your existing robust helpers
-# ----------------------------
+def detect_vehicle_type(ws, plate_col: str) -> str:
+    """
+    Detect vehicle type from row 2 of selected plate column.
+
+    E / RE = electric = GC337
+    Others = gasoline = GC335
+    """
+    plate_col = plate_col.strip().upper()
+    first_plate = ws[f"{plate_col}2"].value
+
+    if first_plate is None or str(first_plate).strip() == "":
+        raise ValueError(f"No license plate found at {plate_col}2.")
+
+    plate = str(first_plate).strip().upper()
+
+    if plate.startswith("E") or plate.startswith("RE"):
+        return "337"
+
+    return "335"
+
+
 def find_row_by_value(ws, value, start_row=2):
     target = str(value).strip()
     for row in ws.iter_rows(min_row=start_row):
@@ -85,14 +88,17 @@ def find_row_by_value(ws, value, start_row=2):
 def first_empty_row_any(ws, start_row=2):
     r = start_row
     check_cols = max(ws.max_column, 10)
+
     while True:
         any_value = False
         for c in range(1, check_cols + 1):
             if ws.cell(row=r, column=c).value not in (None, ""):
                 any_value = True
                 break
+
         if not any_value:
             return r
+
         r += 1
 
 
@@ -100,85 +106,84 @@ def first_empty_col_in_row(ws, row, start_col=1):
     for c in range(start_col, ws.max_column + 1):
         if ws.cell(row=row, column=c).value in (None, ""):
             return c
+
     return ws.max_column + 1
 
 
-# ----------------------------
-# callable entrypoint for your GUI
-# ----------------------------
 def run_job(
     excel_path: str,
     sheet_name: str,
     plate_col: str,
-    vehicle_type: str,           # "335" or "337"
     headless: bool = True,
-    output_path: Optional[str] = None,  # if None -> overwrite same file
+    output_path: Optional[str] = None,
     progress_cb: Optional[Callable[[int, int, str], None]] = None,
 ):
-    """
-    GUI calls this.
-    - Reads plates from (excel_path, sheet_name, plate_col)
-    - Queries GC335/GC337
-    - Writes results into the SAME sheet, into the next empty columns on each plate's row
-    - Saves to output_path if provided, otherwise saves back to excel_path
-
-    Backup behavior:
-    - If output_path is provided, backup the output file before writing to it
-    - If output_path is not provided, backup excel_path before writing to it
-
-    progress_cb(current, total, plate)
-      - current starts at 1
-    """
     excel_path = excel_path.strip().strip('"').strip("'")
+
     if not excel_path.lower().endswith(".xlsx"):
         raise ValueError("Please select a .xlsx file")
+
     if not os.path.exists(excel_path):
         raise FileNotFoundError(f"File not found: {excel_path}")
 
     if output_path:
         output_path = output_path.strip().strip('"').strip("'")
+
         if not output_path.lower().endswith(".xlsx"):
             raise ValueError("Output file must be a .xlsx file")
+
         if not os.path.exists(output_path):
             raise FileNotFoundError(f"Output file not found: {output_path}")
+
         target_file_to_backup = output_path
     else:
         target_file_to_backup = excel_path
 
-    # Create backup before any modification happens
     create_backup_copy(target_file_to_backup)
 
     wb = load_workbook(excel_path)
+
     if sheet_name not in wb.sheetnames:
         raise ValueError(f"Sheet '{sheet_name}' not found. Available: {wb.sheetnames}")
-    ws = wb[sheet_name]
 
-    # Read plate list from the selected column
+    ws = wb[sheet_name]
+    plate_col = plate_col.strip().upper()
+
     plates = read_column_values(excel_path, sheet_name, plate_col, start_row=2)
     total = len(plates)
+
+    if total == 0:
+        raise ValueError("No license plates found.")
 
     if progress_cb:
         progress_cb(0, total, "")
 
-    vehicle_type = str(vehicle_type).strip()
-    if vehicle_type == "335":
-        client = GC335Client(headless=headless)
-        keys_order = ["receiveDate", "dealNote", "taxreFund", "custCd", "caseNo", "msg", "dealDate", "rptDate"]
-    elif vehicle_type == "337":
+    vehicle_type = detect_vehicle_type(ws, plate_col)
+    print(f"Detected vehicle type: {vehicle_type}")
+
+    if vehicle_type == "337":
         client = GC337Client(headless=headless)
         keys_order = ["transId", "crtDate", "status", "refundDt"]
     else:
-        raise ValueError("vehicle_type must be '335' or '337'")
+        client = GC335Client(headless=headless)
+        keys_order = [
+            "receiveDate",
+            "dealNote",
+            "taxreFund",
+            "custCd",
+            "caseNo",
+            "msg",
+            "dealDate",
+            "rptDate",
+        ]
 
     try:
         for idx, plate in enumerate(plates, start=1):
             if progress_cb:
                 progress_cb(idx, total, plate)
 
-            # find existing row that already has this plate anywhere
             row = find_row_by_value(ws, plate, start_row=2)
 
-            # if not found, append new empty row and write plate in col A
             if row is None:
                 row = first_empty_row_any(ws, start_row=2)
                 ws.cell(row=row, column=1, value=plate)
@@ -209,35 +214,28 @@ def run_job(
         except Exception:
             pass
 
-    # Save
     if output_path:
         safe_save_workbook(wb, output_path)
     else:
         safe_save_workbook(wb, excel_path)
 
 
-# ----------------------------
-# CLI mode still works
-# ----------------------------
 def main():
     excel_path = input("Enter the Excel file name (with .xlsx): ").strip().strip('"').strip("'")
 
     wb = load_workbook(excel_path)
+
     print("\nAvailable sheets:")
     for name in wb.sheetnames:
         print(f"- {name}")
+
     sheet_name = input("\nEnter the sheet name to write data into: ").strip()
-
     plate_col = input("Enter the plate column letter (A-Z): ").strip().upper()
-
-    vehicle = input("Type (electric / gasoline): ").strip().lower()
-    vehicle_type = "337" if vehicle in ("electric", "e") else "335"
 
     run_job(
         excel_path=excel_path,
         sheet_name=sheet_name,
         plate_col=plate_col,
-        vehicle_type=vehicle_type,
         headless=True,
         output_path=None,
         progress_cb=None,

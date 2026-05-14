@@ -1,4 +1,4 @@
-('C:\\Users\\jimmy\\Desktop\\yapro\\web_crawl\\build\\YaProApp\\PYZ-00.pyz',
+('C:\\Users\\jimmy\\Desktop\\yapro\\web_crawl\\build\\YaproApp\\PYZ-00.pyz',
  [('GC335',
    'C:\\Users\\jimmy\\Desktop\\yapro\\web_crawl\\GC335.py',
    'PYMODULE'),
