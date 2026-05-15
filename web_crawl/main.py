@@ -25,7 +25,7 @@ def safe_save_workbook(wb, filename):
 
         wb.save(out_name)
 
-        print(f"\n'{filename}' is locked (probably open in Excel).")
+        print(f"\n'{filename}' is locked, probably open in Excel.")
         print(f"Saved to: {out_name}")
 
 
@@ -87,9 +87,7 @@ def detect_vehicle_type(ws) -> str:
     Others = gasoline = GC335
     """
 
-    plate_col = plate_col.strip().upper()
-
-    first_plate = ws[f"{plate_col}2"].value
+    first_plate = ws[f"{PLATE_COL}2"].value
 
     if first_plate is None or str(first_plate).strip() == "":
         raise ValueError(f"No license plate found at {PLATE_COL}2.")
@@ -155,7 +153,6 @@ def run_job(
     excel_path: str,
     sheet_name: str,
     headless: bool = True,
-    output_path: Optional[str] = None,
     progress_cb: Optional[Callable[[int, int, str], None]] = None,
 ):
 
@@ -167,22 +164,8 @@ def run_job(
     if not os.path.exists(excel_path):
         raise FileNotFoundError(f"File not found: {excel_path}")
 
-    if output_path:
-
-        output_path = output_path.strip().strip('"').strip("'")
-
-        if not output_path.lower().endswith(".xlsx"):
-            raise ValueError("Output file must be a .xlsx file")
-
-        if not os.path.exists(output_path):
-            raise FileNotFoundError(f"Output file not found: {output_path}")
-
-        target_file_to_backup = output_path
-
-    else:
-        target_file_to_backup = excel_path
-
-    create_backup_copy(target_file_to_backup)
+    # Create backup copy before editing original file
+    create_backup_copy(excel_path)
 
     wb = load_workbook(excel_path)
 
@@ -193,7 +176,7 @@ def run_job(
 
     ws = wb[sheet_name]
 
-    plate_col = plate_col.strip().upper()
+    plate_col = PLATE_COL
 
     plates = read_column_values(
         excel_path,
@@ -210,7 +193,7 @@ def run_job(
     if progress_cb:
         progress_cb(0, total, "")
 
-    vehicle_type = detect_vehicle_type(ws, plate_col)
+    vehicle_type = detect_vehicle_type(ws)
 
     print(f"Detected vehicle type: {vehicle_type}")
 
@@ -311,11 +294,7 @@ def run_job(
         except Exception:
             pass
 
-    if output_path:
-        safe_save_workbook(wb, output_path)
-
-    else:
-        safe_save_workbook(wb, excel_path)
+    safe_save_workbook(wb, excel_path)
 
 
 def main():
@@ -339,20 +318,6 @@ def main():
     )
 
     parser.add_argument(
-        "-o",
-        "--output",
-        required=True,
-        help="Output Excel file path"
-    )
-
-    parser.add_argument(
-        "-os",
-        "--output-sheet",
-        required=True,
-        help="Output sheet name"
-    )
-
-    parser.add_argument(
         "--show-browser",
         action="store_true",
         help="Show Chrome browser"
@@ -363,9 +328,7 @@ def main():
     run_job(
         excel_path=args.input,
         sheet_name=args.input_sheet,
-        plate_col="D",
         headless=not args.show_browser,
-        output_path=args.output,
         progress_cb=None,
     )
 
