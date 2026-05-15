@@ -1,4 +1,5 @@
 # gui_app.py
+
 import os
 import sys
 import threading
@@ -9,7 +10,7 @@ from openpyxl import load_workbook
 
 import main
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 
 def resource_path(filename: str) -> str:
@@ -32,12 +33,10 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Yapro GC335/GC337 Tool")
-        self.geometry("820x500")
+        self.geometry("820x430")
 
         self.plates_file = tk.StringVar()
-        self.output_file = tk.StringVar()
         self.plates_sheet = tk.StringVar()
-        self.output_sheet = tk.StringVar()
 
         self.progress_var = tk.DoubleVar(value=0)
         self.progress_text = tk.StringVar(value="0 / 0")
@@ -61,9 +60,9 @@ class App(tk.Tk):
 
         caution_text = (
             "• 執行前確保選取檔案已關閉\n"
-            "• 執行前確保檔案已備份.\n"
+            "• 程式會自動建立原始檔案副本.\n"
             "• 執行前請先閱讀操作說明.\n"
-            "• 請確定車牌欄位在Column D.\n"
+            "• 請確定車牌欄位在 Column D.\n"
             "• 若須查詢大量車牌，請允許一個小時以上的執行時間."
         )
 
@@ -93,19 +92,11 @@ class App(tk.Tk):
         self.cbo_plates_sheet = ttk.Combobox(frm, textvariable=self.plates_sheet, state="readonly", width=30)
         self.cbo_plates_sheet.grid(row=2, column=1, sticky="w", **pad)
 
-        ttk.Label(frm, text="輸出至:").grid(row=3, column=0, sticky="w", **pad)
-        ttk.Entry(frm, textvariable=self.output_file, width=70).grid(row=3, column=1, sticky="we", **pad)
-        ttk.Button(frm, text="選取檔案...", command=self.pick_output_file).grid(row=3, column=2, **pad)
-
-        ttk.Label(frm, text="輸出工作表:").grid(row=4, column=0, sticky="w", **pad)
-        self.cbo_output_sheet = ttk.Combobox(frm, textvariable=self.output_sheet, state="readonly", width=30)
-        self.cbo_output_sheet.grid(row=4, column=1, sticky="w", **pad)
-
         self.btn_run = ttk.Button(frm, text="執行", command=self.on_run)
-        self.btn_run.grid(row=6, column=0, sticky="w", **pad)
+        self.btn_run.grid(row=3, column=0, sticky="w", **pad)
 
         self.lbl_status = ttk.Label(frm, text="Ready.")
-        self.lbl_status.grid(row=6, column=1, sticky="w", **pad)
+        self.lbl_status.grid(row=3, column=1, sticky="w", **pad)
 
         self.pbar = ttk.Progressbar(
             frm,
@@ -114,20 +105,20 @@ class App(tk.Tk):
             variable=self.progress_var,
             maximum=100,
         )
-        self.pbar.grid(row=6, column=2, sticky="we", **pad)
+        self.pbar.grid(row=3, column=2, sticky="we", **pad)
 
         self.lbl_progress = ttk.Label(frm, textvariable=self.progress_text, width=12, anchor="e")
-        self.lbl_progress.grid(row=6, column=3, sticky="e", **pad)
+        self.lbl_progress.grid(row=3, column=3, sticky="e", **pad)
 
-        self.txt = tk.Text(frm, height=16)
-        self.txt.grid(row=7, column=0, columnspan=4, sticky="nsew", **pad)
+        self.txt = tk.Text(frm, height=14)
+        self.txt.grid(row=4, column=0, columnspan=4, sticky="nsew", **pad)
 
         self.lbl_version = ttk.Label(frm, text=f"Version {APP_VERSION}", foreground="gray")
-        self.lbl_version.grid(row=8, column=3, sticky="e", padx=8, pady=4)
+        self.lbl_version.grid(row=5, column=3, sticky="e", padx=8, pady=4)
 
         frm.columnconfigure(1, weight=1)
         frm.columnconfigure(2, weight=1)
-        frm.rowconfigure(7, weight=1)
+        frm.rowconfigure(4, weight=1)
 
     def log(self, s: str):
         self.txt.insert("end", s + "\n")
@@ -148,36 +139,13 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to read sheets:\n{e}")
 
-    def pick_output_file(self):
-        path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
-        if not path:
-            return
-
-        self.output_file.set(path)
-
-        try:
-            sheets = list_sheets(path)
-            self.cbo_output_sheet["values"] = sheets
-            if sheets:
-                self.output_sheet.set(sheets[0])
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to read sheets:\n{e}")
-
     def on_run(self):
         if not self.plates_file.get().strip():
-            messagebox.showwarning("Missing", "Please choose Plates Excel.")
-            return
-
-        if not self.output_file.get().strip():
-            messagebox.showwarning("Missing", "Please choose Output Excel.")
+            messagebox.showwarning("Missing", "Please choose Excel file.")
             return
 
         if not self.plates_sheet.get().strip():
-            messagebox.showwarning("Missing", "Please choose Plates sheet.")
-            return
-
-        if not self.output_sheet.get().strip():
-            messagebox.showwarning("Missing", "Please choose Output sheet.")
+            messagebox.showwarning("Missing", "Please choose sheet.")
             return
 
         self.progress_var.set(0)
@@ -193,11 +161,12 @@ class App(tk.Tk):
     def _run_worker(self):
         try:
             self.log(
-                f"Plates: {self.plates_file.get()} | "
+                f"File: {self.plates_file.get()} | "
                 f"sheet={self.plates_sheet.get()} | "
                 f"col=D"
             )
-            self.log(f"Output: {self.output_file.get()} | sheet={self.output_sheet.get()}")
+            self.log("Output: Same file")
+            self.log("Backup: Auto create _copy file")
             self.log("Mode: Auto detect from first plate")
 
             def progress_cb(current: int, total: int, plate: str):
@@ -225,11 +194,10 @@ class App(tk.Tk):
                 excel_path=self.plates_file.get(),
                 sheet_name=self.plates_sheet.get(),
                 headless=True,
-                output_path=self.output_file.get(),
                 progress_cb=progress_cb,
             )
 
-            self.log("=== DONE (saved) ===")
+            self.log("=== DONE (saved to same file) ===")
             self._ui_done("Done.")
 
         except Exception:
