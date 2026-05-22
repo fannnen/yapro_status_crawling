@@ -22,7 +22,6 @@ def safe_save_workbook(wb, filename):
     except PermissionError:
         base, ext = os.path.splitext(filename)
         out_name = f"{base}_out{ext}"
-
         wb.save(out_name)
 
         print(f"\n'{filename}' is locked, probably open in Excel.")
@@ -30,17 +29,20 @@ def safe_save_workbook(wb, filename):
 
 
 def create_backup_copy(file_path: str) -> str:
-    base, ext = os.path.splitext(file_path)
-    copy_path = f"{base}_copy{ext}"
+    output_folder = os.path.dirname(os.path.dirname(file_path))
+    os.makedirs(output_folder, exist_ok=True)
+
+    base_name = os.path.basename(file_path)
+    name, ext = os.path.splitext(base_name)
+
+    copy_path = os.path.join(output_folder, f"{name}_copy{ext}")
 
     counter = 1
-
     while os.path.exists(copy_path):
-        copy_path = f"{base}_copy{counter}{ext}"
+        copy_path = os.path.join(output_folder, f"{name}_copy{counter}{ext}")
         counter += 1
 
     shutil.copy2(file_path, copy_path)
-
     print(f"Backup created: {copy_path}")
 
     return copy_path
@@ -61,13 +63,11 @@ def read_column_values(
         )
 
     ws = wb[sheet_name]
-
     col_letter = col_letter.strip().upper()
 
     values = []
 
     for cell in ws[col_letter][start_row - 1:]:
-
         if cell.value is None:
             continue
 
@@ -76,17 +76,11 @@ def read_column_values(
         if s:
             values.append(s)
 
+    wb.close()
     return values
 
 
 def detect_vehicle_type(ws) -> str:
-    """
-    Detect vehicle type from first plate.
-
-    E / RE = electric = GC337
-    Others = gasoline = GC335
-    """
-
     first_plate = ws[f"{PLATE_COL}2"].value
 
     if first_plate is None or str(first_plate).strip() == "":
@@ -101,13 +95,10 @@ def detect_vehicle_type(ws) -> str:
 
 
 def find_row_by_value(ws, value, start_row=2):
-
     target = str(value).strip()
 
     for row in ws.iter_rows(min_row=start_row):
-
         for cell in row:
-
             if cell.value is None:
                 continue
 
@@ -118,17 +109,13 @@ def find_row_by_value(ws, value, start_row=2):
 
 
 def first_empty_row_any(ws, start_row=2):
-
     r = start_row
-
     check_cols = max(ws.max_column, 10)
 
     while True:
-
         any_value = False
 
         for c in range(1, check_cols + 1):
-
             if ws.cell(row=r, column=c).value not in (None, ""):
                 any_value = True
                 break
@@ -140,13 +127,76 @@ def first_empty_row_any(ws, start_row=2):
 
 
 def first_empty_col_in_row(ws, row, start_col=1):
-
     for c in range(start_col, ws.max_column + 1):
-
         if ws.cell(row=row, column=c).value in (None, ""):
             return c
 
     return ws.max_column + 1
+
+
+def get_default_sheet_name(excel_path: str) -> str:
+    wb = load_workbook(excel_path, read_only=True)
+    sheet_name = wb.sheetnames[0]
+    wb.close()
+    return sheet_name
+
+
+def is_excel_ready(file_path: str) -> bool:
+    try:
+        wb = load_workbook(file_path, read_only=True)
+        wb.close()
+        return True
+
+    except Exception as e:
+        print(f"File not ready yet, skipping: {file_path}")
+        print(f"Reason: {e}")
+        return False
+
+
+def should_skip_file(file_path: str) -> bool:
+    filename = os.path.basename(file_path)
+
+    if filename.startswith("~$"):
+        return True
+
+    lower = filename.lower()
+
+    if not lower.endswith(".xlsx"):
+        return True
+
+    if "_copy" in lower:
+        return True
+
+    if "_out" in lower:
+        return True
+
+    if "_done" in lower:
+        return True
+
+    if "_updated" in lower:
+        return True
+
+    return False
+
+
+def move_to_output(file_path: str, output_folder: str) -> str:
+    os.makedirs(output_folder, exist_ok=True)
+
+    base_name = os.path.basename(file_path)
+    name, ext = os.path.splitext(base_name)
+
+    dest_path = os.path.join(output_folder, f"{name}_updated{ext}")
+
+    counter = 1
+    while os.path.exists(dest_path):
+        dest_path = os.path.join(output_folder, f"{name}_updated{counter}{ext}")
+        counter += 1
+
+    shutil.move(file_path, dest_path)
+
+    print(f"Moved updated file to: {dest_path}")
+
+    return dest_path
 
 
 def run_job(
@@ -164,7 +214,6 @@ def run_job(
     if not os.path.exists(excel_path):
         raise FileNotFoundError(f"File not found: {excel_path}")
 
-    # Create backup copy before editing original file
     create_backup_copy(excel_path)
 
     wb = load_workbook(excel_path)
@@ -176,12 +225,10 @@ def run_job(
 
     ws = wb[sheet_name]
 
-    plate_col = PLATE_COL
-
     plates = read_column_values(
         excel_path,
         sheet_name,
-        plate_col,
+        PLATE_COL,
         start_row=2
     )
 
@@ -198,7 +245,6 @@ def run_job(
     print(f"Detected vehicle type: {vehicle_type}")
 
     if vehicle_type == "337":
-
         client = GC337Client(headless=headless)
 
         keys_order = [
@@ -209,7 +255,6 @@ def run_job(
         ]
 
     else:
-
         client = GC335Client(headless=headless)
 
         keys_order = [
@@ -224,7 +269,6 @@ def run_job(
         ]
 
     try:
-
         for idx, plate in enumerate(plates, start=1):
 
             if progress_cb:
@@ -235,9 +279,7 @@ def run_job(
             row = find_row_by_value(ws, plate, start_row=2)
 
             if row is None:
-
                 row = first_empty_row_any(ws, start_row=2)
-
                 ws.cell(row=row, column=1, value=plate)
 
             json_data = client.query_plate_first_row(plate)
@@ -257,12 +299,7 @@ def run_job(
             )
 
             if no_result:
-
-                ws.cell(
-                    row=row,
-                    column=start_col,
-                    value="無結果"
-                )
+                ws.cell(row=row, column=start_col, value="無結果")
 
                 reason = (
                     json_data.get("error", "")
@@ -270,16 +307,11 @@ def run_job(
                     else ""
                 )
 
-                ws.cell(
-                    row=row,
-                    column=start_col + 1,
-                    value=reason
-                )
+                ws.cell(row=row, column=start_col + 1, value=reason)
 
                 continue
 
             for i, key in enumerate(keys_order):
-
                 ws.cell(
                     row=row,
                     column=start_col + i,
@@ -287,18 +319,68 @@ def run_job(
                 )
 
     finally:
-
         try:
             client.close()
-
         except Exception:
             pass
 
     safe_save_workbook(wb, excel_path)
+    wb.close()
+
+
+def run_folder_mode(
+    folder_path: str,
+    headless: bool = True,
+    move_done: bool = True,
+):
+
+    folder_path = folder_path.strip().strip('"').strip("'")
+
+    if not os.path.isdir(folder_path):
+        raise FileNotFoundError(f"Folder not found: {folder_path}")
+
+    output_folder = os.path.dirname(folder_path)
+
+    files = [
+        os.path.join(folder_path, f)
+        for f in os.listdir(folder_path)
+        if not should_skip_file(os.path.join(folder_path, f))
+    ]
+
+    if not files:
+        print("No Excel files found.")
+        return
+
+    # Select only the newest Excel file in the folder
+    file_path = max(files, key=os.path.getmtime)
+
+    print("\n==============================")
+    print(f"Newest file selected: {file_path}")
+
+    if not is_excel_ready(file_path):
+        return
+
+    try:
+        sheet_name = get_default_sheet_name(file_path)
+
+        print(f"Using sheet: {sheet_name}")
+
+        run_job(
+            excel_path=file_path,
+            sheet_name=sheet_name,
+            headless=headless,
+            progress_cb=None,
+        )
+
+        if move_done:
+            move_to_output(file_path, output_folder)
+
+    except Exception as e:
+        print(f"Error processing file: {file_path}")
+        print(f"Reason: {e}")
 
 
 def main():
-
     parser = argparse.ArgumentParser(
         description="YaPro GC335/GC337 Tool"
     )
@@ -306,15 +388,12 @@ def main():
     parser.add_argument(
         "-i",
         "--input",
-        required=True,
         help="Input Excel file path"
     )
 
     parser.add_argument(
-        "-is",
-        "--input-sheet",
-        required=True,
-        help="Input sheet name"
+        "--folder",
+        help="Process newest xlsx file inside folder"
     )
 
     parser.add_argument(
@@ -323,14 +402,35 @@ def main():
         help="Show Chrome browser"
     )
 
+    parser.add_argument(
+        "--no-move-done",
+        action="store_true",
+        help="Do not move completed files"
+    )
+
     args = parser.parse_args()
 
-    run_job(
-        excel_path=args.input,
-        sheet_name=args.input_sheet,
-        headless=not args.show_browser,
-        progress_cb=None,
-    )
+    if args.folder:
+        run_folder_mode(
+            folder_path=args.folder,
+            headless=not args.show_browser,
+            move_done=not args.no_move_done,
+        )
+
+    else:
+        if not args.input:
+            raise ValueError(
+                "Missing input file. Use -i or --folder."
+            )
+
+        sheet_name = get_default_sheet_name(args.input)
+
+        run_job(
+            excel_path=args.input,
+            sheet_name=sheet_name,
+            headless=not args.show_browser,
+            progress_cb=None,
+        )
 
 
 if __name__ == "__main__":
