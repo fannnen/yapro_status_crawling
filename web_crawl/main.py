@@ -29,31 +29,20 @@ def safe_save_workbook(wb, filename):
 
 
 def create_backup_copy(file_path: str) -> str:
-    output_folder = os.path.dirname(
-        os.path.dirname(file_path)
-    )
-
+    output_folder = os.path.dirname(os.path.dirname(file_path))
     os.makedirs(output_folder, exist_ok=True)
 
     base_name = os.path.basename(file_path)
     name, ext = os.path.splitext(base_name)
 
-    copy_path = os.path.join(
-        output_folder,
-        f"{name}_copy{ext}"
-    )
+    copy_path = os.path.join(output_folder, f"{name}_copy{ext}")
 
     counter = 1
-
     while os.path.exists(copy_path):
-        copy_path = os.path.join(
-            output_folder,
-            f"{name}_copy{counter}{ext}"
-        )
+        copy_path = os.path.join(output_folder, f"{name}_copy{counter}{ext}")
         counter += 1
 
     shutil.copy2(file_path, copy_path)
-
     print(f"Backup created: {copy_path}")
 
     return copy_path
@@ -196,18 +185,11 @@ def move_to_output(file_path: str, output_folder: str) -> str:
     base_name = os.path.basename(file_path)
     name, ext = os.path.splitext(base_name)
 
-    dest_path = os.path.join(
-        output_folder,
-        f"{name}_updated{ext}"
-    )
+    dest_path = os.path.join(output_folder, f"{name}_updated{ext}")
 
     counter = 1
-
     while os.path.exists(dest_path):
-        dest_path = os.path.join(
-            output_folder,
-            f"{name}_updated{counter}{ext}"
-        )
+        dest_path = os.path.join(output_folder, f"{name}_updated{counter}{ext}")
         counter += 1
 
     shutil.move(file_path, dest_path)
@@ -317,11 +299,7 @@ def run_job(
             )
 
             if no_result:
-                ws.cell(
-                    row=row,
-                    column=start_col,
-                    value="無結果"
-                )
+                ws.cell(row=row, column=start_col, value="無結果")
 
                 reason = (
                     json_data.get("error", "")
@@ -329,11 +307,7 @@ def run_job(
                     else ""
                 )
 
-                ws.cell(
-                    row=row,
-                    column=start_col + 1,
-                    value=reason
-                )
+                ws.cell(row=row, column=start_col + 1, value=reason)
 
                 continue
 
@@ -377,31 +351,33 @@ def run_folder_mode(
         print("No Excel files found.")
         return
 
-    for file_path in files:
-        print("\n==============================")
-        print(f"Found file: {file_path}")
+    # Select only the newest Excel file in the folder
+    file_path = max(files, key=os.path.getmtime)
 
-        if not is_excel_ready(file_path):
-            continue
+    print("\n==============================")
+    print(f"Newest file selected: {file_path}")
 
-        try:
-            sheet_name = get_default_sheet_name(file_path)
+    if not is_excel_ready(file_path):
+        return
 
-            print(f"Using sheet: {sheet_name}")
+    try:
+        sheet_name = get_default_sheet_name(file_path)
 
-            run_job(
-                excel_path=file_path,
-                sheet_name=sheet_name,
-                headless=headless,
-                progress_cb=None,
-            )
+        print(f"Using sheet: {sheet_name}")
 
-            if move_done:
-                move_to_output(file_path, output_folder)
+        run_job(
+            excel_path=file_path,
+            sheet_name=sheet_name,
+            headless=headless,
+            progress_cb=None,
+        )
 
-        except Exception as e:
-            print(f"Error processing file: {file_path}")
-            print(f"Reason: {e}")
+        if move_done:
+            move_to_output(file_path, output_folder)
+
+    except Exception as e:
+        print(f"Error processing file: {file_path}")
+        print(f"Reason: {e}")
 
 
 def main():
@@ -417,7 +393,7 @@ def main():
 
     parser.add_argument(
         "--folder",
-        help="Process all xlsx files inside folder"
+        help="Process newest xlsx file inside folder"
     )
 
     parser.add_argument(
